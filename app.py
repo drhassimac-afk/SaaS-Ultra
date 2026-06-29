@@ -261,6 +261,25 @@ def upgrade_page():
     conn.close()
     user_data = {"username": user_row["username"], "plan": user_row["plan"]}
     return render_template("upgrade.html", user=user_data)
+    
+@app.route('/upgrade', methods=['GET', 'POST'])
+def upgrade():
+    # التأكد من أن المستخدم مسجل دخوله أولاً
+    if 'username' not in session:
+        return redirect(url_for('login'))
+        
+    username = session['username']
+    
+    if request.method == 'POST':
+        # هنا نقوم بتحديث خطة المستخدم في قاعدة البيانات إلى PRO
+        conn = get_db_connection()
+        conn.execute('UPDATE users SET plan = ? WHERE username = ?', ('PRO', username))
+        conn.commit()
+        conn.close()
+        # بعد الترقية، نعيده للوحة التحكم ومعه رسالة نجاح
+        return redirect(url_for('dashboard'))
+        
+    return render_template('upgrade.html')
 
 @app.route("/checkout", methods=["POST"])
 @login_required
