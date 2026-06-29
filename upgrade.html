@@ -3,71 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⚡ ترقية الحساب إلى الباقة الاحترافية</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <title>SaaS ULTRA - ترقية الحساب ⚡</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans p-6">
+<body class="bg-slate-900 flex items-center justify-center min-h-screen text-slate-100">
 
-    <div class="max-w-3xl mx-auto text-center mt-12">
-        <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500 mb-4">
-            ارفع إنتاجيتك وفجر طاقة الـ API لديك! 🚀
-        </h1>
-        <p class="text-gray-400 max-w-md mx-auto mb-12">
-            اختر الخطة التي تناسب تطلعاتك وتطلعات شركتك. الترقية فورية وتتم بضغطة زر واحدة.
-        </p>
+    <div class="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-indigo-500/30 text-center">
+        <div class="text-6xl mb-4">🚀</div>
+        <h1 class="text-3xl font-extrabold text-indigo-400 mb-2">انطلق إلى الباقة الاحترافية!</h1>
+        <p class="text-slate-400 text-sm mb-6">افتح ميزات الطقس المؤتمت، الذكاء الاصطناعي، وعدد لا نهائي من المهام.</p>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-2xl mx-auto">
-            
-            <div class="bg-gray-800/50 p-8 rounded-2xl border border-gray-700 opacity-60 flex flex-col justify-between">
-                <div>
-                    <h3 class="text-xl font-bold text-gray-300 mb-2">الباقة الأساسية</h3>
-                    <div class="text-3xl font-black my-4">0 دج <span class="text-xs text-gray-400">/ للأبد</span></div>
-                    <ul class="text-right space-y-3 my-6 text-sm text-gray-400">
-                        <li>✓ إدارة حتى 5 مهام فقط.</li>
-                        <li>✓ حد 50 طلب API شهرياً.</li>
-                        <li>✗ دعم فني متأخر.</li>
-                    </ul>
-                </div>
-                <span class="block w-full bg-gray-700 text-gray-400 text-sm py-2.5 rounded-xl font-semibold">
-                    باقتك الحالية الحالية 🔒
-                </span>
+        <div class="bg-slate-900/50 p-4 rounded-xl text-right space-y-3 mb-6 border border-slate-700">
+            <div class="flex items-center gap-2">
+                <span class="text-green-400">✓</span>
+                <span>عدد مهام غير محدود (بدل 5 فقط)</span>
             </div>
-
-            <div class="bg-gray-800 p-8 rounded-2xl border-2 border-amber-500 relative shadow-2xl flex flex-col justify-between shadow-amber-500/5">
-                <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-gray-900 font-black text-[10px] px-3 py-1 rounded-full uppercase tracking-wider">
-                    الأكثر مبيعاً 🔥
-                </span>
-                <div>
-                    <h3 class="text-xl font-bold text-amber-400 mb-2">المحترفين PRO</h3>
-                    <div class="text-3xl font-black my-4 text-white">2900 دج <span class="text-xs text-amber-400">/ شهرياً</span></div>
-                    <ul class="text-right space-y-3 my-6 text-sm text-gray-300">
-                        <li>✓ إضافة عدد لا نهائي من المهام.</li>
-                        <li>✓ <strong>5000 طلب API شهرياً</strong> لبياناتك.</li>
-                        <li>✓ تفعيل جدار الحماية الذكي ومراقبة السجلات.</li>
-                        <li>✓ دعم فني ذو أولوية على مدار الساعة.</li>
-                    </ul>
-                </div>
-
-                {% if user.plan == 'pro' %}
-                    <span class="block w-full bg-emerald-600 text-white text-sm py-2.5 rounded-xl font-bold">
-                        أنت مشترك بالفعل بالباقة الاحترافية ⚡
-                    </span>
-                {% else %}
-                    <form action="/checkout" method="POST">
-                        <button type="submit" class="block w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-gray-900 font-bold text-sm py-2.5 rounded-xl transition-all shadow-lg shadow-orange-500/20 cursor-pointer">
-                            شراء وتفعيل الحساب فوراً 💳
-                        </button>
-                    </form>
-                {% endif %}
+            <div class="flex items-center gap-2">
+                <span class="text-green-400">✓</span>
+                <span>مساعد الطقس والإنتاجية الذكي الحركي</span>
             </div>
-
+            <div class="flex items-center gap-2">
+                <span class="text-green-400">✓</span>
+                <span>دعم فني أولوي وميزات الذكاء الاصطناعي</span>
+            </div>
         </div>
 
-        <div class="mt-8">
-            <a href="/dashboard" class="text-sm text-gray-500 hover:text-gray-400 underline">
-                إلغاء والعودة للوحة التحكم
-            </a>
-        </div>
+        <form action="/upgrade" method="POST">
+            <button type="submit" 
+                    class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-lg shadow-lg hover:shadow-indigo-500/20 transition duration-200">
+                تأكيد الترقية وتفعيل خطة PRO ⚡
+            </button>
+        </form>
+
+        <a href="/dashboard" class="block mt-4 text-sm text-slate-500 hover:text-slate-400">العودة للوحة التحكم لاحقاً</a>
     </div>
 
 </body>
