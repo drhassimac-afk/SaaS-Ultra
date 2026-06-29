@@ -1,15 +1,140 @@
-<h2>Your Tasks</h2>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ لوحة تحكم المنصة السحابية</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans p-6">
 
-<form method="post" action="/add">
-  <input name="task" placeholder="New task">
-  <button>Add</button>
-</form>
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 flex justify-between items-center border-b border-gray-800 pb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">
+                    🔥 SaaS ULTRA
+                </h1>
+                <p class="text-sm text-gray-400 mt-1">مرحباً بك مجدداً، {{ user.username }} 👋</p>
+            </div>
+            <div class="flex gap-2">
+                <a href="/analytics" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg border border-gray-700 transition-all">
+                    📊 الإحصائيات والـ API
+                </a>
+                <a href="/profile" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg border border-gray-700 transition-all">
+                    👤 الملف الشخصي
+                </a>
+                <a href="/logout" class="bg-rose-950/40 hover:bg-rose-900 text-rose-300 text-sm px-4 py-2 rounded-lg border border-rose-800/50 transition-all">
+                    تسجيل الخروج 🚪
+                </a>
+            </div>
+        </header>
 
-<hr>
+        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <span class="text-xs text-gray-400 block mb-1">نوعية الحساب الحالي</span>
+                {% if user.plan == 'pro' %}
+                    <span class="text-lg font-bold text-amber-400 flex items-center gap-1">💎 أنت PRO User (ميزات خارقة)</span>
+                {% else %}
+                    <div class="flex items-center gap-3">
+                        <span class="text-lg font-bold text-gray-400">🚀 الخطة المجانية (حد أقصى 5 مهام)</span>
+                        <a href="/upgrade" class="text-xs bg-amber-500 text-gray-900 font-bold px-3 py-1 rounded-full hover:bg-amber-600 transition-all">ترقية ⚡</a>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="w-full md:w-auto">
+                <span class="text-xs text-gray-400 block mb-1">مفتاح الـ API الخاص بك:</span>
+                <code class="block bg-gray-900 p-2 rounded text-xs font-mono text-indigo-300 border border-gray-700 break-all select-all">
+                    {{ user.api_key if user.api_key else "لم يتم توليد مفتاح بعد" }}
+                </code>
+            </div>
+        </div>
 
-{% for t in tasks %}
-  <p>
-    {{ t['task'] }}
-    <a href="/delete/{{ t['id'] }}">❌</a>
-  </p>
-{% endfor %}
+        <div class="mb-6 bg-gray-800 p-4 rounded-xl border {% if user.plan == 'pro' %}border-amber-500/30{% else %}border-gray-700{% endif %}">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-sm font-bold flex items-center gap-2">
+                    🌤️ مساعد الطقس والإنتاجية الذكي
+                </h3>
+                <span class="text-[10px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full font-mono">أتمتة حية</span>
+            </div>
+
+            {% if user.plan == 'pro' %}
+                {% if weather.success %}
+                    <div class="flex flex-col gap-3 mt-2 bg-gray-900/50 p-3 rounded-lg">
+                        <div class="flex items-center gap-4">
+                            <div class="text-3xl">🌡️</div>
+                            <div>
+                                <p class="text-sm font-semibold text-gray-200">الطقس الحالي في منطقتك (دلس، الجزائر)</p>
+                                <p class="text-xs text-gray-400 mt-1">
+                                    درجة الحرارة: <span class="text-amber-400 font-bold font-mono">{{ weather.temp }}°C</span> |
+                                    سرعة الرياح: <span class="text-blue-400 font-bold font-mono">{{ weather.wind }} كم/س</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="mt-1 pt-2 border-t border-gray-800 text-xs font-medium text-indigo-300 bg-indigo-950/20 p-2 rounded border border-indigo-900/30">
+                            {{ weather.hint }}
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-xs text-gray-500 mt-1">⚠️ تعذر الاتصال بسيرفر الطقس حالياً.</p>
+                {% endif %}
+            {% else %}
+                <div class="bg-gray-900/40 p-4 rounded-lg text-center border border-dashed border-gray-700 mt-2">
+                    <p class="text-xs text-gray-400 mb-2">🔒 ميزة جلب الطقس المؤتمت ونصائح الإنتاجية الذكية حصرية للمشتركين في الباقة الاحترافية.</p>
+                    <a href="/upgrade" class="text-[11px] text-amber-400 hover:underline font-bold">
+                        ترقية حسابك لفتح الميزة الآن ←
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+
+        {% with messages = get_flashed_messages(category_filter=["ai_hint"]) %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="mb-6 bg-indigo-950/40 border-2 border-indigo-500/40 p-4 rounded-xl text-indigo-200 text-xs whitespace-pre-line shadow-lg shadow-indigo-500/5">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl mb-6">
+            <h2 class="text-lg font-bold text-gray-200 mb-4">📝 إضافة مهمة جديدة للمصفوفة</h2>
+            <form action="/add" method="POST" class="flex gap-2">
+                <input type="text" name="title" placeholder="مثال: مراجعة كود الـ API، جدولة رحلة طقس..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500" required>
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer">
+                    إضافة ➕
+                </button>
+            </form>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+            <h2 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">📋 قائمة المهام الحالية:</h2>
+            <ul class="space-y-3">
+                {% for task in tasks %}
+                <li class="bg-gray-900/50 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+                    <div>
+                        <span class="text-gray-200 font-medium">{{ task.title }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        {% if user.plan == 'pro' %}
+                            <a href="/ai/decompose/{{ task.id }}" class="text-xs bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white px-3 py-1.5 rounded-lg border border-indigo-500/35 transition-all cursor-pointer">
+                                🪄 تفكيك ذكي (AI)
+                            </a>
+                        {% endif %}
+
+                        <a href="/delete/{{ task.id }}" class="text-xs bg-rose-950/40 hover:bg-rose-900 text-rose-400 px-3 py-1.5 rounded-lg border border-rose-850/50 transition-all">
+                            حذف 🗑️
+                        </a>
+                    </div>
+                </li>
+                {% else %}
+                <p class="text-xs text-gray-500 text-center py-4">لا توجد مهام حالياً. ابدأ بإضافة مهمتك الأولى بالأعلى!</p>
+                {% endfor %}
+            </ul>
+        </div>
+
+    </div>
+
+</body>
+</html>
