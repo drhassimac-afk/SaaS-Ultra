@@ -20,7 +20,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 def db():
-    conn = sqlite3.connect("app.db")
+    # استخدام المسار الديناميكي لضمان استقرار السيرفر السحابي
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -80,7 +81,6 @@ def log_activity(user_id, activity):
     print(f"[LOG] user={user_id} action={activity}")
     try:
         conn = db()
-        # نقوم بجلب الوقت الحالي وتمريره يدوياً في سطر الـ INSERT
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn.execute("""
             INSERT INTO activity_logs (user_id, action, timestamp) 
@@ -115,7 +115,6 @@ def admin_required(f):
 def api_key_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        # البحث عن المفتاح في الهيدر أو الرابط المباشر URL
         api_key = request.headers.get("X-API-KEY") or request.args.get("api_key")
         if not api_key:
             return jsonify({"error": "Missing API Key", "message": "برجاء إرسال X-API-KEY في الـ Header أو الرابط"}), 401
@@ -127,7 +126,6 @@ def api_key_required(f):
             conn.close()
             return jsonify({"error": "Invalid API Key", "message": "مفتاح الـ API المستخدم غير صالح"}), 403
 
-        # 🛑 جدار الحماية (Rate Limiting): التحقق من تخطي الحدود المسموحة للباقة
         if user["api_requests_count"] >= user["max_api_limits"]:
             conn.close()
             return jsonify({
@@ -135,31 +133,26 @@ def api_key_required(f):
                 "message": f"لقد استهلكت حد الباقة الحالي ({user['max_api_limits']} طلب). يرجى الترقية إلى خطة PRO للحصول على حدود غير محدودة!"
             }), 429
 
-        # 📈 زيادة عداد الاستهلاك الفعلي للمستخدم في قاعدة البيانات بمقدار +1
         conn.execute("UPDATE users SET api_requests_count = api_requests_count + 1 WHERE id=?", (user["id"],))
         conn.commit()
         conn.close()
 
-        # تحويل بيانات المستخدم لتمريرها ديناميكياً للـ API المفتوح
         request.api_user = user
         return f(*args, **kwargs)
     return wrapper
 
 def send_email_notification(to_email, subject, body_content):
-    # إعدادات السيرفر (استبدل هذه بالبيانات الخاصة بك)
-    sender_email = "drhassimac@gmail.com"  # بريدك الإلكتروني
-    sender_password = "prcv fdof jvsa tmtb"  # الـ App Password الـ 16 حرفاً
+    sender_email = "drhassimac@gmail.com"  
+    sender_password = "prcv fdof jvsa tmtb"  
     
     try:
-        # إنشاء الرسالة الهيكلية
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = to_email
         msg['Subject'] = subject
         
-        # صياغة البريد بدعم اللغة العربية وتنسيق HTML مبسط
         html_content = f"""
-        <div style="direction: rtl; text-align: right; font-family: sans-serif; border: 1px solid #e2e8f0; padding: 20px; rounded: 12px;">
+        <div style="direction: rtl; text-align: right; font-family: sans-serif; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px;">
             <h2 style="color: #4f46e5;">🔥 منصة SaaS ULTRA الذكية</h2>
             <hr style="border: 0; border-top: 1px solid #e2e8f0;">
             <p style="font-size: 14px; color: #334155;">{body_content}</p>
@@ -169,9 +162,8 @@ def send_email_notification(to_email, subject, body_content):
         """
         msg.attach(MIMEText(html_content, 'html', 'utf-8'))
         
-        # الاتصال بسيرفر Google SMTP الآمن
         server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls() # تشفير الاتصال
+        server.starttls() 
         server.login(sender_email, sender_password)
         server.sendmail(sender_email, to_email, msg.as_string())
         server.quit()
@@ -180,7 +172,15 @@ def send_email_notification(to_email, subject, body_content):
     except Exception as e:
         print(f"[EMAIL ERROR] فشل إرسال البريد: {e}")
         return False
+
 # ================= AUTHENTICATION ROUTES =================
+# 🎯 تم إضافة هذا المسار الجذري لمنع خطأ الـ 404 وتوجيه الزائر تلقائياً
+@app.route("/")
+def index():
+    if "user_id" in session:
+        return redirect("/dashboard")
+    return redirect("/login")
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -196,7 +196,6 @@ def register():
 
         conn = db()
         try:
-            # توليد مفتاح API تلقائي ومحدد الصلاحيات والقيود الافتراضية (50 طلب للمجاني)
             generated_key = secrets.token_hex(20)
             conn.execute("""
                 INSERT INTO users(username, password, avatar, plan, is_admin, api_key, api_requests_count, max_api_limits)
@@ -241,10 +240,8 @@ def logout():
     return redirect("/login")
 
 # ================= CORE SaaS & DASHBOARD =================
-# دالة جانبية لجلب الطقس الحقيقي (مثال على إحداثيات الجزائر/بومرداس)
 def get_live_weather():
     try:
-        # إحداثيات بومرداس/دلس (Latitude: 36.91, Longitude: 3.91)
         url = "https://api.open-meteo.com/v1/forecast?latitude=36.91&longitude=3.91&current_weather=true"
         response = requests.get(url, timeout=3)
         if response.status_code == 200:
@@ -252,7 +249,6 @@ def get_live_weather():
             temp = data["current_weather"]["temperature"]
             wind = data["current_weather"]["windspeed"]
             
-            # محرك الأتمتة والنصائح الذكية (Automation Engine)
             ai_hint = "☀️ طقس اليوم معتدل ومناسب جداً لإنجاز المهام الميدانية والمكتبية بإنتاجية عالية!"
             if temp >= 35:
                 ai_hint = "⚠️ تحذير: الطقس حار جداً اليوم خارجياً! يُنصح بجدولة المهام الميدانية في المساء والتركيز على العمل المكتبي في المكيف."
@@ -270,32 +266,13 @@ def get_live_weather():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # 🎯 سطر الاختبار المباشر: سيقوم بإرسال إيميل فوراً بمجرد دخولك للصفحة!
-    # استبدل الإيميل ببريدك الحقيقي المستقبِل لتتفقد هاتفك
-
-
     conn = db()
-    # ... بقية كود الدالة المعتاد لديك وجلب الطقس والمهام
     user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
     tasks = conn.execute("SELECT * FROM tasks WHERE user_id=?", (session["user_id"],)).fetchall()
     conn.close()
     
-    # جلب بيانات الطقس الحية
     weather = get_live_weather()
-    
     return render_template("dashboard.html", user=user, tasks=tasks, weather=weather)
-
-@app.route("/add", methods=["POST"])
-@login_required
-def add():
-    user_id = session["user_id"]
-    task_text = request.form.get("task")
-
-    conn = db()
-    user = conn.execute("SELECT plan FROM users WHERE id=?", (user_id,)).fetchone()
-    count = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id=?", (user_id,)).fetchone()[0]
-
-    # 🛑 تطبيق الـ Limits (الخطة المجانية حدها 5 مهام داخل لوحة
 
 @app.route("/delete/<int:id>")
 @login_required
@@ -334,7 +311,6 @@ def profile():
 @login_required
 def upgrade():
     conn = db()
-    # ترقية خطة العميل، وتوسيع سقف الـ API الخاص به تلقائياً إلى 5000 طلب احترافي
     conn.execute("UPDATE users SET plan='pro', max_api_limits=5000 WHERE id=?", (session["user_id"],))
     conn.commit()
     conn.close()
@@ -353,29 +329,24 @@ def generate_api_key():
     return redirect("/dashboard")
 
 @app.route("/analytics")
-@login_required # أو الـ decorator الخاص بك لحماية الصفحة
+@login_required
 def analytics():
     conn = db()
-    
-    # 1. جلب بيانات المستخدم كـ Row
     user_row = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
     
     if not user_row:
         conn.close()
         return "المستخدم غير موجود", 404
         
-    # 2. تحويل الـ Row إلى Dictionary آمن لـ Jinja2 وضمان وجود الحقول
     user_data = {
         "username": user_row["username"],
         "plan": user_row["plan"] if "plan" in user_row.keys() else "free",
-        "api_requests": user_row["api_requests"] if "api_requests" in user_row.keys() else 0
+        "api_requests": user_row["api_requests_count"] if "api_requests_count" in user_row.keys() else 0
     }
     
-    # 3. جلب السجلات
     logs = conn.execute("SELECT * FROM activity_logs WHERE user_id=? ORDER BY timestamp DESC LIMIT 15", (session["user_id"],)).fetchall()
     conn.close()
     
-    # 4. تمرير الـ Dictionary بدلاً من الـ Row Object
     return render_template("analytics.html", user=user_data, logs=logs)
 
 # ================= PROFESSIONAL ADMIN PANEL ROUTERS =================
@@ -407,15 +378,13 @@ def toggle_tier(user_id):
 @app.route("/api/v1/resource", methods=["GET"])
 @api_key_required
 def get_saas_resource():
-    # جلب بيانات المستخدم الممررة تلقائياً من الـ Decorator الآمن
     user_data = request.api_user
-    
     return jsonify({
         "status": "success",
         "author": "SaaS Core Engine v1.0",
         "api_usage": {
             "current_plan": user_data["plan"],
-            "requests_used_total": user_data["api_requests_count"] + 1,  # +1 تعبر عن الطلب الجاري معالجته حالياً
+            "requests_used_total": user_data["api_requests_count"] + 1,
             "requests_remaining": user_data["max_api_limits"] - (user_data["api_requests_count"] + 1)
         },
         "payload": {
@@ -424,27 +393,13 @@ def get_saas_resource():
         }
     }), 200
 
-@app.route("/upgrade")
-@login_required
-def upgrade_page():
-    conn = db()
-    user_row = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
-    conn.close()
-    
-    user_data = {
-        "username": user_row["username"],
-        "plan": user_row["plan"] if "plan" in user_row.keys() else "free"
-    }
-    return render_template("upgrade.html", user=user_data)
-
 @app.route("/checkout", methods=["POST"])
 @login_required
 def checkout():
     conn = db()
     user_row = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
     
-    # تحديث الباقة
-    conn.execute("UPDATE users SET plan='pro', api_requests=0 WHERE id=?", (session["user_id"],))
+    conn.execute("UPDATE users SET plan='pro', api_requests_count=0, max_api_limits=5000 WHERE id=?", (session["user_id"],))
     
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn.execute("INSERT INTO activity_logs (user_id, action, timestamp) VALUES (?, ?, ?)", 
@@ -452,100 +407,16 @@ def checkout():
     conn.commit()
     conn.close()
     
-    # 🎯 تعديل أمان: ضع بريدك الشخصي هنا مباشرة للتجربة والاختبار
-    user_email = "بريدك_الشخصي_المستقبل@gmail.com" 
+    # 🎯 يمكنك استبدال هذا بالإيميل الحقيقي للمستخدم لاحقاً
+    user_email = "drhassimac@gmail.com" 
     
     subject = "💎 تهانينا! تم تفعيل الباقة الاحترافية بنجاح في SaaS ULTRA"
     body = f"مرحباً بك يا {user_row['username']}، نؤكد لك نجاح عملية الدفع وتفعيل باقة PRO لحسابك وفتح ميزات المساعد الذكي والـ AI بالكامل!"
     
-    # استدعاء الإرسال وطباعة النتيجة في شاشة Termux مباشرة
     print("[SYSTEM] جاري محاولة الاتصال بسيرفر Google SMTP وإرسال البريد...")
     send_email_notification(user_email, subject, body)
     
     return redirect("/analytics")
-
-@app.route("/ai/decompose/<int:task_id>")
-@login_required
-def ai_decompose(task_id):
-    conn = db()
-    
-    # تأمين قراءة الصفوف بأسماء الأعمدة بنسبة 100%
-    conn.row_factory = sqlite3.Row 
-    
-    task = conn.execute("SELECT * FROM tasks WHERE id=? AND user_id=?", (task_id, session["user_id"])).fetchone()
-    
-    if not task:
-        conn.close()
-        return "المهمة غير موجودة", 404
-        
-    # جلب النص بأمان (سواء كان كائن صف أو قاموس)
-    try:
-        task_title = task["title"]
-    except Exception:
-        # حل احتياطي في حال جلبها كمصفوفة مرتبة رقمياً (العمود الثاني عادة هو العنوان)
-        task_title = task[1] 
-        
-    task_text = str(task_title).lower()
-    
-    # محرك تحليل وتفكيك المهام الذكي (AI Decomposer Engine)
-    steps = ["الخطوة 1: التخطيط المبدئي وتحديد الأهداف.", "الخطوة 2: البدء في التنفيذ الفعلي ومراجعة المسار.", "الخطوة 3: التدقيق النهائي وتسليم العمل."]
-    
-    if "طقس" in task_text or "سفر" in task_text or "weather" in task_text:
-        steps = [
-            "📌 1. مراجعة النشرة الجوية الحية عبر واجهة التطبيق الذكية.",
-            "🚗 2. تجهيز وسائل النقل وتأمين المعدات الحساسة ضد الرياح أو الحرارة.",
-            "⏱️ 3. اختيار التوقيت المثالي للتحرك بناءً على مؤشرات الإنتاجية الموصى بها."
-        ]
-    elif "برمجة" in task_text or "كود" in task_text or "تطبيق" in task_text or "code" in task_text:
-        steps = [
-            "💻 1. هندسة قاعدة البيانات ورسم العلاقات بين الجداول.",
-            "🛠️ 2. كتابة الأكواد الخلفية وتأمين الـ API وتتبع الاستهلاك.",
-            "🧪 3. عمل اختبار شامل للأخطاء (Debugging) وتصميم واجهة Tailwind."
-        ]
-    elif "تسويق" in task_text or "بيع" in task_text or "market" in task_text:
-        steps = [
-            "📈 1. تحديد الفئة المستهدفة ودراسة المنافسين in السوق.",
-            "🎨 2. صناعة المحتوى الإعلاني وتجهيز العروض الحصرية لباقة PRO.",
-            "📊 3. إطلاق الحملة ومراقبة العائد على الإستثمار والتحليلات."
-        ]
-
-    # حفظ الخطوات في السيرفر مؤقتاً لتظهر في الواجهة
-    flash_message = f"💡 تفكيك الذكاء الاصطناعي لمهمة ({task_title}):\n" + "\n".join(steps)
-    flash(flash_message, "ai_hint")
-    
-    conn.close()
-    return redirect("/dashboard")
-        
-    task_text = task["title"].lower()
-    
-    # محرك تحليل وتفكيك المهام الذكي (AI Decomposer Engine)
-    steps = ["الخطوة 1: التخطيط المبدئي وتحديد الأهداف.", "الخطوة 2: البدء في التنفيذ الفعلي ومراجعة المسار.", "الخطوة 3: التدقيق النهائي وتسليم العمل."]
-    
-    if "طقس" in task_text or "سفر" in task_text:
-        steps = [
-            "📌 1. مراجعة النشرة الجوية الحية عبر واجهة التطبيق الذكية.",
-            "🚗 2. تجهيز وسائل النقل وتأمين المعدات الحساسة ضد الرياح أو الحرارة.",
-            "⏱️ 3. اختيار التوقيت المثالي للتحرك بناءً على مؤشرات الإنتاجية الموصى بها."
-        ]
-    elif "برمجة" in task_text or "كود" in task_text or "تطبيق" in task_text:
-        steps = [
-            "💻 1. هندسة قاعدة البيانات ورسم العلاقات بين الجداول.",
-            "🛠️ 2. كتابة الأكواد الخلفية وتأمين الـ API وتتبع الاستهلاك.",
-            "🧪 3. عمل اختبار شامل للأخطاء (Debugging) وتصميم واجهة Tailwind."
-        ]
-    elif "تسويق" in task_text or "بيع" in task_text:
-        steps = [
-            "📈 1. تحديد الفئة المستهدفة ودراسة المنافسين في السوق.",
-            "🎨 2. صناعة المحتوى الإعلاني وتجهيز العروض الحصرية لباقة PRO.",
-            "📊 3. إطلاق الحملة ومراقبة العائد على الإستثمار والتحليلات."
-        ]
-
-    # حفظ الخطوات في السيرفر مؤقتاً لتظهر في الواجهة
-    flash_message = f"💡 تفكيك الذكاء الاصطناعي لمهمة ({task['title']}):\n" + "\n".join(steps)
-    flash(flash_message, "ai_hint")
-    
-    conn.close()
-    return redirect("/dashboard")
 
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1", port=5000)
