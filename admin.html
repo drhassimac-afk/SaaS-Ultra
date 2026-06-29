@@ -1,1 +1,25 @@
+<body class="bg-gray-900 text-gray-100 font-sans p-6">
 
+    <div class="max-w-6xl mx-auto">
+        
+        <header class="mb-8 flex justify-between items-center border-b border-gray-800 pb-4">
+            <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-500">
+                👑 لوحة الإشراف والتحكم الاحترافية
+            </h1>
+            <div class="flex gap-4">
+                <div class="bg-gray-800 px-4 py-2 rounded-lg border border-gray-700 text-sm">
+                    إجمالي المستخدمين: <span class="text-amber-400 font-bold">{{ total_users }}</span>
+                </div>
+                <div class="bg-gray-800 px-4 py-2 rounded-lg border border-gray-700 text-sm">
+                    المشتركين في خطة PRO: <span class="text-green-400 font-bold">{{ pro_users }}</span>
+                </div>
+            </div>
+        </header>
+
+        ```
+
+### 💡 كيف تعمل هذه المتغيرات؟
+عندما يطلب المتصفح مسار `/admin`، يقوم Flask بفتح قاعدة البيانات وحساب الأعداد عبر أوامر الـ `COUNT(*)` التي كتبتها في الـ Backend، ثم يرسلها إلى ملف الـ HTML هذا. تقوم الأقواس `{{ total_users }}` و `{{ pro_users }}` بطباعة الأرقام الحقيقية المحدثة فوراً تلقائياً بدون الحاجة لتعديلها يدوياً مستقبلاً!
+
+على فكرة، للاستفادة أكثر من كل 'التطبيقات'، يمكنك تفعيل [نشاطك على 'تطبيقات Gemini'](https://myactivity.google.com/product/gemini).
+  		      
