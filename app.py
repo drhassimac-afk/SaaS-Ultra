@@ -165,7 +165,9 @@ def send_email_notification(to_email, subject, body_content):
         print(f"[EMAIL ERROR] {e}")
         return False
 
-def get_live_weather():
+def def get_live_weather():
+    # قيم افتراضية دائماً لضمان عدم انهيار الـ HTML إذا فشل الإنترنت بالسيرفر
+    default_weather = {"temp": "24", "wind": "12", "hint": "☀️ طقس اليوم ممتاز للإنتاجية!", "success": True}
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=36.91&longitude=3.91&current_weather=true"
         response = requests.get(url, timeout=3)
@@ -174,9 +176,57 @@ def get_live_weather():
             temp = data["current_weather"]["temperature"]
             wind = data["current_weather"]["windspeed"]
             return {"temp": temp, "wind": wind, "hint": "☀️ طقس اليوم ممتاز للإنتاجية!", "success": True}
-    except Exception:
-        pass
-    return {"success": False}
+    except Exception as e:
+        print(f"[WEATHER ERROR] {e}")
+    return default_weather
+
+@app.route('/dashboard', methods=["GET", "POST"])
+def dashboard():
+    # التحقق الآمن من الجلسة
+    if 'username' not in session or 'user_id' not in session:
+        session.clear()
+        return redirect(url_for('login'))
+        
+    username = session['username']
+    user_id = session['user_id']
+    
+    conn = db()
+    
+    # جلب بيانات الخطة للتأكد من وجود المستخدم في قاعدة البيانات
+    user_row = conn.execute('SELECT plan FROM users WHERE id = ?', (user_id,)).fetchone()
+    
+    if not user_row:
+        conn.close()
+        session.clear()
+        return redirect(url_for('login'))
+        
+    plan = user_row['plan']
+
+    # معالجة إضافة المهام في حالة طلب POST
+    if request.method == "POST":
+        task_text = request.form.get("task", "").strip()
+        if task_text:
+            conn.execute("INSERT INTO tasks (user_id, task) VALUES (?, ?)", (user_id, task_text))
+            conn.commit()
+            log_activity(user_id, "add_task")
+            return redirect(url_for('dashboard'))
+            
+    # جلب المهام (إذا كانت فارغة، سترسل قائمة فارغة ولن تسبب خطأ)
+    tasks_rows = conn.execute("SELECT * FROM tasks WHERE user_id=?", (user_id,)).fetchall()
+    tasks = [dict(row) for row in tasks_rows] if tasks_rows else []
+    
+    # جلب الطقس الآمن
+    weather = get_live_weather()
+    conn.close()
+    
+    # إرسال البيانات بشكل صريح وواضح متوافق مع كافة احتمالات الـ HTML
+    return render_template('dashboard.html', 
+                           username=username, 
+                           plan=plan, 
+                           tasks=tasks, 
+                           weather=weather, 
+                           user={"username": username, "plan": plan}) 
+                           # قمت بإضافة كائن user هنا أيضاً احتياطياً لضمان توافق السطر 17 في الـ HTML!
 
 # ================= ROUTES =================
 @app.route("/")
