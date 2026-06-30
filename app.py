@@ -264,22 +264,35 @@ def upgrade_page():
     
 @app.route('/upgrade', methods=['GET', 'POST'])
 def upgrade():
-    # التأكد من أن المستخدم مسجل دخوله أولاً
     if 'username' not in session:
         return redirect(url_for('login'))
         
     username = session['username']
     
     if request.method == 'POST':
-        # هنا نقوم بتحديث خطة المستخدم في قاعدة البيانات إلى PRO
-        conn = get_db_connection()
-        conn.execute('UPDATE users SET plan = ? WHERE username = ?', ('PRO', username))
-        conn.commit()
+        import sqlite3
+        # الاتصال المباشر بقاعدة البيانات لتجنب أي تعارض في الصلاحيات
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        
+        try:
+            # محاولة تحديث الخطة إلى PRO
+            cursor.execute('UPDATE users SET plan = ? WHERE username = ?', ('PRO', username))
+            conn.commit()
+        except sqlite3.OperationalError:
+            # إذا ظهر خطأ أن عمود plan غير موجود، نقوم بإنشائه فوراً تلقائياً!
+            cursor.execute('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "BASIC"')
+            conn.commit()
+            # ثم نعيد عملية الترقية
+            cursor.execute('UPDATE users SET plan = ? WHERE username = ?', ('PRO', username))
+            conn.commit()
+            
         conn.close()
-        # بعد الترقية، نعيده للوحة التحكم ومعه رسالة نجاح
+        # بعد النجاح، نعيده للوحة التحكم لتظهر له الميزات الاحترافية
         return redirect(url_for('dashboard'))
         
     return render_template('upgrade.html')
+
 
 @app.route("/checkout", methods=["POST"])
 @login_required
