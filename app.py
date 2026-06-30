@@ -11,7 +11,7 @@ from functools import wraps
 from werkzeug.utils import secure_filename
 from datetime import datetime
 
-app = Flask(__name__, template_folder='.')
+app = Flask(__name__)
 app.secret_key = "SUPER_SECRET_SAAS_KEY_2026"  # مفتاح تشفير الجلسات
 
 # ================= DATABASE UTILITIES =================
@@ -168,73 +168,42 @@ def index():
         return redirect("/dashboard")
     return redirect("/login")
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if 'username' in session:
-        return redirect(url_for('dashboard'))
-        
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        
-        import sqlite3
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
-        
-        # البحث عن المستخدم
-        cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
-        user = cursor.fetchone()
-        conn.close()
-        
-        if user:
-            session['username'] = username
-            return redirect(url_for('dashboard'))
-        else:
-            return render_template('login.html', error="❌ خطأ في الاسم أو كلمة المرور")
-            
-    return render_template('login.html')
-
-
-@app.route('/register', methods=['GET', 'POST'])
+@app.route("/register", methods=["GET", "POST"])
 def register():
-    if 'username' in session:
-        return redirect(url_for('dashboard'))
+    if request.method == "POST":
+        u = request.form["username"].strip()
+        p = hash_pw(request.form["password"])
+        filename = "default.png"
         
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        
-        if not username or not password:
-            return render_template('register.html', error="الرجاء ملء جميع الحقول!")
-            
-        import sqlite3
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
-        
+        conn = db()
         try:
-            # إدخال الحساب الجديد مباشرة بخطة BASIC الافتراضية
-            cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
+            generated_key = secrets.token_hex(20)
+            conn.execute("""
+                INSERT INTO users(username, password, avatar, plan, is_admin, api_key, api_requests_count, max_api_limits)
+                VALUES (?, ?, ?, 'free', 0, ?, 0, 50)
+            """, (u, p, filename, generated_key))
             conn.commit()
-            
-            # تسجيل الدخول تلقائياً فور نجاح التسجيل
-            session['username'] = username
             conn.close()
-            return redirect(url_for('dashboard'))
-            
+            return redirect("/login")
         except sqlite3.IntegrityError:
             conn.close()
-            return render_template('register.html', error="اسم المستخدم هذا مسجل بالفعل!")
-        except sqlite3.OperationalError:
-            # صيانة تلقائية في حال عدم وجود عمود plan في السيرفر الجديد
-            cursor.execute('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "BASIC"')
-            conn.commit()
-            cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
-            conn.commit()
-            session['username'] = username
-            conn.close()
-            return redirect(url_for('dashboard'))
-            
-    return render_template('register.html')
+            return render_template("register.html", error="اسم المستخدم مسجل مسبقاً!")
+    return render_template("register.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        u = request.form["username"]
+        p = hash_pw(request.form["password"])
+        conn = db()
+        user = conn.execute("SELECT * FROM users WHERE username=? AND password=?", (u, p)).fetchone()
+        conn.close()
+        if user:
+            session["user_id"] = user["id"]
+            log_activity(user["id"], "login")
+            return redirect("/dashboard")
+        return render_template("login.html", error="❌ خطأ في الاسم أو كلمة المرور")
+    return render_template("login.html")
 
 @app.route("/logout")
 def logout():
@@ -256,31 +225,15 @@ def get_live_weather():
         pass
     return {"success": False}
 
-@app.route('/dashboard')
+@app.route("/dashboard")
+@login_required
 def dashboard():
-    # إذا لم يكن اسم المستخدم في السيرفر، يذهب فوراً للدخول ولا شيء غير ذلك
-    if 'username' not in session:
-        return redirect(url_for('login'))
-        
-    username = session['username']
-    
-    # جلب خطة المستخدم من قاعدة البيانات
-    import sqlite3
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    
-    # تأمين جلب البيانات
-    try:
-        cursor.execute('SELECT plan FROM users WHERE username = ?', (username,))
-        result = cursor.fetchone()
-        plan = result[0] if result else 'BASIC'
-    except:
-        plan = 'BASIC'
-        
+    conn = db()
+    user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    tasks = conn.execute("SELECT * FROM tasks WHERE user_id=?", (session["user_id"],)).fetchall()
     conn.close()
-    
-    # عرض الصفحة وإرسال البيانات للواجهة
-    return render_template('dashboard.html', username=username, plan=plan)
+    weather = get_live_weather()
+    return render_template("dashboard.html", user=user, tasks=tasks, weather=weather)
 
 @app.route("/delete/<int:id>")
 @login_required
@@ -308,38 +261,6 @@ def upgrade_page():
     conn.close()
     user_data = {"username": user_row["username"], "plan": user_row["plan"]}
     return render_template("upgrade.html", user=user_data)
-    
-@app.route('/upgrade', methods=['GET', 'POST'])
-def upgrade():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-        
-    username = session['username']
-    
-    if request.method == 'POST':
-        import sqlite3
-        # الاتصال المباشر بقاعدة البيانات لتجنب أي تعارض في الصلاحيات
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
-        
-        try:
-            # محاولة تحديث الخطة إلى PRO
-            cursor.execute('UPDATE users SET plan = ? WHERE username = ?', ('PRO', username))
-            conn.commit()
-        except sqlite3.OperationalError:
-            # إذا ظهر خطأ أن عمود plan غير موجود، نقوم بإنشائه فوراً تلقائياً!
-            cursor.execute('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "BASIC"')
-            conn.commit()
-            # ثم نعيد عملية الترقية
-            cursor.execute('UPDATE users SET plan = ? WHERE username = ?', ('PRO', username))
-            conn.commit()
-            
-        conn.close()
-        # بعد النجاح، نعيده للوحة التحكم لتظهر له الميزات الاحترافية
-        return redirect(url_for('dashboard'))
-        
-    return render_template('upgrade.html')
-
 
 @app.route("/checkout", methods=["POST"])
 @login_required
