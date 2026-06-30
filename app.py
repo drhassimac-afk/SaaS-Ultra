@@ -256,15 +256,31 @@ def get_live_weather():
         pass
     return {"success": False}
 
-@app.route("/dashboard")
-@login_required
+@app.route('/dashboard')
 def dashboard():
-    conn = db()
-    user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
-    tasks = conn.execute("SELECT * FROM tasks WHERE user_id=?", (session["user_id"],)).fetchall()
+    # إذا لم يكن اسم المستخدم في السيرفر، يذهب فوراً للدخول ولا شيء غير ذلك
+    if 'username' not in session:
+        return redirect(url_for('login'))
+        
+    username = session['username']
+    
+    # جلب خطة المستخدم من قاعدة البيانات
+    import sqlite3
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    
+    # تأمين جلب البيانات
+    try:
+        cursor.execute('SELECT plan FROM users WHERE username = ?', (username,))
+        result = cursor.fetchone()
+        plan = result[0] if result else 'BASIC'
+    except:
+        plan = 'BASIC'
+        
     conn.close()
-    weather = get_live_weather()
-    return render_template("dashboard.html", user=user, tasks=tasks, weather=weather)
+    
+    # عرض الصفحة وإرسال البيانات للواجهة
+    return render_template('dashboard.html', username=username, plan=plan)
 
 @app.route("/delete/<int:id>")
 @login_required
