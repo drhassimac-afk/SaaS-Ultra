@@ -168,27 +168,47 @@ def index():
         return redirect("/dashboard")
     return redirect("/login")
 
-@app.route("/register", methods=["GET", "POST"])
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == "POST":
-        u = request.form["username"].strip()
-        p = hash_pw(request.form["password"])
-        filename = "default.png"
+    # إذا كان مسجل دخوله بالفعل، انقله للوحة التحكم
+    if 'username' in session:
+        return redirect(url_for('dashboard'))
         
-        conn = db()
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if not username or not password:
+            return render_template('register.html', error="الرجاء ملء جميع الحقول!")
+            
+        import sqlite3
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        
         try:
-            generated_key = secrets.token_hex(20)
-            conn.execute("""
-                INSERT INTO users(username, password, avatar, plan, is_admin, api_key, api_requests_count, max_api_limits)
-                VALUES (?, ?, ?, 'free', 0, ?, 0, 50)
-            """, (u, p, filename, generated_key))
+            # محاولة إدخال المستخدم الجديد بالخطة الافتراضية BASIC
+            cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
             conn.commit()
+            
+            # تسجيل الدخول تلقائياً بعد التسجيل بنجاح
+            session['username'] = username
             conn.close()
-            return redirect("/login")
+            return redirect(url_for('dashboard'))
+            
         except sqlite3.IntegrityError:
             conn.close()
-            return render_template("register.html", error="اسم المستخدم مسجل مسبقاً!")
-    return render_template("register.html")
+            return render_template('register.html', error="اسم المستخدم هذا مسجل بالفعل! اختر اسماً آخر.")
+        except sqlite3.OperationalError:
+            # حماية إضافية في حال عدم وجود عمود plan في الجدول
+            cursor.execute('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "BASIC"')
+            conn.commit()
+            cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
+            conn.commit()
+            session['username'] = username
+            conn.close()
+            return redirect(url_for('dashboard'))
+            
+    return render_template('register.html')
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
