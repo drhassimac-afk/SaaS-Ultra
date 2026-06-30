@@ -175,13 +175,14 @@ def login():
         
     if request.method == 'POST':
         username = request.form.get('username')
-        password = request.form.get('password')
+        # تشفير كلمة المرور القادمة من المستخدم لمقارنتها بالمسجلة في قاعدة البيانات
+        password = hash_pw(request.form.get('password'))
         
         import sqlite3
         conn = sqlite3.connect('database.db')
         cursor = conn.cursor()
         
-        # البحث عن المستخدم
+        # البحث عن المستخدم بكلمة المرور المشفرة
         cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
         user = cursor.fetchone()
         conn.close()
@@ -194,7 +195,6 @@ def login():
             
     return render_template('login.html')
 
-
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if 'username' in session:
@@ -202,7 +202,8 @@ def register():
         
     if request.method == 'POST':
         username = request.form.get('username')
-        password = request.form.get('password')
+        # تشفير كلمة المرور قبل حفظها في قاعدة البيانات لحمايتها
+        password = hash_pw(request.form.get('password'))
         
         if not username or not password:
             return render_template('register.html', error="الرجاء ملء جميع الحقول!")
@@ -212,7 +213,7 @@ def register():
         cursor = conn.cursor()
         
         try:
-            # إدخال الحساب الجديد مباشرة بخطة BASIC الافتراضية
+            # إدخال الحساب الجديد بكلمة المرور المشفرة وخطة BASIC الافتراضية
             cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
             conn.commit()
             
