@@ -167,28 +167,29 @@ def index():
     if "user_id" in session:
         return redirect("/dashboard")
     return redirect("/login")
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if 'username' in session:
         return redirect(url_for('dashboard'))
         
     if request.method == 'POST':
-        username = request.form.get('username')
-        # تشفير كلمة المرور القادمة من المستخدم لمقارنتها بالمسجلة في قاعدة البيانات
-        password = hash_pw(request.form.get('password'))
+        username = request.form.get('username', '').strip()
+        raw_password = request.form.get('password', '')
         
-        import sqlite3
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
+        if not username or not raw_password:
+            return render_template('login.html', error="❌ برجاء إدخال اسم المستخدم وكلمة المرور")
+            
+        # تشفير كلمة المرور للمقارنة
+        password = hash_pw(raw_password)
         
-        # البحث عن المستخدم بكلمة المرور المشفرة
-        cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
-        user = cursor.fetchone()
+        conn = db() # استخدام دالة الاتصال الموحدة الخاصة بك
+        user = conn.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).fetchone()
         conn.close()
         
         if user:
             session['username'] = username
+            session['user_id'] = user['id'] # حفظ الـ id أيضاً لضمان عمل بقية الميزات (مثل الـ Profile والـ Logs)
+            log_activity(user['id'], "login")
             return redirect(url_for('dashboard'))
         else:
             return render_template('login.html', error="❌ خطأ في الاسم أو كلمة المرور")
@@ -201,39 +202,40 @@ def register():
         return redirect(url_for('dashboard'))
         
     if request.method == 'POST':
-        username = request.form.get('username')
-        # تشفير كلمة المرور قبل حفظها في قاعدة البيانات لحمايتها
-        password = hash_pw(request.form.get('password'))
+        username = request.form.get('username', '').strip()
+        raw_password = request.form.get('password', '')
         
-        if not username or not password:
+        # التحقق من الحقول قبل التشفير لمنع الـ Internal Server Error
+        if not username or not raw_password:
             return render_template('register.html', error="الرجاء ملء جميع الحقول!")
             
-        import sqlite3
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
+        password = hash_pw(raw_password)
+        filename = "default.png"
+        generated_key = secrets.token_hex(20) # توليد مفتاح الـ API الافتراضي للمستخدم الجديد
         
+        conn = db()
         try:
-            # إدخال الحساب الجديد بكلمة المرور المشفرة وخطة BASIC الافتراضية
-            cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
+            # إدخال الحساب بكافة الأعمدة لتفادي أخطاء القيم الفارغة في لوحة التحكم
+            conn.execute("""
+                INSERT INTO users(username, password, avatar, plan, is_admin, api_key, api_requests_count, max_api_limits)
+                VALUES (?, ?, ?, 'BASIC', 0, ?, 0, 50)
+            """, (username, password, filename, generated_key))
             conn.commit()
             
-            # تسجيل الدخول تلقائياً فور نجاح التسجيل
+            # جلب الـ ID الخاص بالمستخدم الجديد لتسجيل دخوله بشكل صحيح
+            user_row = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
+            
             session['username'] = username
+            if user_row:
+                session['user_id'] = user_row['id']
+                log_activity(user_row['id'], "register")
+                
             conn.close()
             return redirect(url_for('dashboard'))
             
         except sqlite3.IntegrityError:
             conn.close()
             return render_template('register.html', error="اسم المستخدم هذا مسجل بالفعل!")
-        except sqlite3.OperationalError:
-            # صيانة تلقائية في حال عدم وجود عمود plan في السيرفر الجديد
-            cursor.execute('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "BASIC"')
-            conn.commit()
-            cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
-            conn.commit()
-            session['username'] = username
-            conn.close()
-            return redirect(url_for('dashboard'))
             
     return render_template('register.html')
 
