@@ -259,13 +259,11 @@ def get_live_weather():
 
 @app.route('/dashboard', methods=["GET", "POST"])
 def dashboard():
-    # التحقق من وجود اسم المستخدم في الجلسة بناءً على دالة الـ login الجديدة
+    # التحقق من وجود اسم المستخدم في الجلسة
     if 'username' not in session:
         return redirect(url_for('login'))
         
     username = session['username']
-    
-    # الاتصال بقاعدة البيانات
     conn = db()
     
     # 1. جلب بيانات المستخدم لمعرفة الـ id والـ plan الخاصين به
@@ -279,7 +277,7 @@ def dashboard():
     user_id = user_row['id']
     plan = user_row['plan']
 
-    # 2. التعامل مع إضافة المهام الجديدة (إذا قام المستخدم بكتابة مهمة وضغط إرسال)
+    # 2. التعامل مع إضافة المهام الجديدة (إذا أرسل المستخدم مهمة جديدة)
     if request.method == "POST":
         task_text = request.form.get("task", "").strip()
         if task_text:
@@ -288,10 +286,10 @@ def dashboard():
             log_activity(user_id, "add_task")
             return redirect(url_for('dashboard'))
             
-    # 3. جلب المهام الخاصة بالمستخدم لعرضها في الجدول/القائمة
+    # 3. جلب المهام الخاصة بالمستخدم لعرضها في القائمة
     tasks = conn.execute("SELECT * FROM tasks WHERE user_id=?", (user_id,)).fetchall()
     
-    # 4. جلب بيانات الطقس الحية لـ SaaS Ultra
+    # 4. جلب بيانات الطقس الحية
     weather = get_live_weather()
     
     conn.close()
