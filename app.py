@@ -225,31 +225,46 @@ def get_live_weather():
         pass
     return {"success": False}
 
-@app.route('/dashboard')
+@app.route('/dashboard', methods=["GET", "POST"])
 def dashboard():
-    # إذا لم يكن اسم المستخدم في السيرفر، يذهب فوراً للدخول ولا شيء غير ذلك
-    if 'username' not in session:
+    # التحقق من أن المستخدم قام بتسجيل الدخول عبر الـ user_id
+    if 'user_id' not in session:
         return redirect(url_for('login'))
         
-    username = session['username']
+    user_id = session['user_id']
     
-    # جلب خطة المستخدم من قاعدة البيانات
-    import sqlite3
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
+    conn = db()
     
-    # تأمين جلب البيانات
-    try:
-        cursor.execute('SELECT plan FROM users WHERE username = ?', (username,))
-        result = cursor.fetchone()
-        plan = result[0] if result else 'BASIC'
-    except:
-        plan = 'BASIC'
+    # التعامل مع إضافة المهام الجديدة (إذا كان هناك طلب POST)
+    if request.method == "POST":
+        task_text = request.form.get("task", "").strip()
+        if task_text:
+            conn.execute("INSERT INTO tasks (user_id, task) VALUES (?, ?)", (user_id, task_text))
+            conn.commit()
+            log_activity(user_id, "add_task")
+            return redirect(url_for('dashboard'))
+
+    # جلب بيانات المستخدم بالاعتماد على الـ id
+    user_row = conn.execute('SELECT username, plan FROM users WHERE id = ?', (user_id,)).fetchone()
+    
+    if not user_row:
+        conn.close()
+        session.clear()
+        return redirect(url_for('login'))
         
+    username = user_row['username']
+    plan = user_row['plan']
+    
+    # جلب المهام الخاصة بالمستخدم لعرضها في لوحة التحكم
+    tasks = conn.execute("SELECT * FROM tasks WHERE user_id=?", (user_id,)).fetchall()
+    
+    # جلب بيانات الطقس الحية
+    weather = get_live_weather()
+    
     conn.close()
     
-    # عرض الصفحة وإرسال البيانات للواجهة
-    return render_template('dashboard.html', username=username, plan=plan)
+    # عرض الصفحة وإرسال المتغيرات لقالب الـ HTML
+    return render_template('dashboard.html', username=username, plan=plan, tasks=tasks, weather=weather)
 
 @app.route("/delete/<int:id>")
 @login_required
