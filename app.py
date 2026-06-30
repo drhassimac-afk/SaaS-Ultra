@@ -31,7 +31,7 @@ def init_db():
         username TEXT UNIQUE,
         password TEXT,
         avatar TEXT,
-        plan TEXT DEFAULT 'free',
+        plan TEXT DEFAULT 'BASIC',
         is_admin INTEGER DEFAULT 0,
         api_key TEXT,
         api_requests_count INTEGER DEFAULT 0,
@@ -62,6 +62,10 @@ def init_db():
         conn.execute("ALTER TABLE users ADD COLUMN max_api_limits INTEGER DEFAULT 50")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'BASIC'")
+    except sqlite3.OperationalError:
+        pass
         
     conn.commit()
     conn.close()
@@ -90,7 +94,7 @@ def log_activity(user_id, activity):
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if "user_id" not in session:
+        if "username" not in session:
             return redirect("/login")
         return f(*args, **kwargs)
     return wrapper
@@ -98,10 +102,10 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if "user_id" not in session:
+        if "username" not in session:
             return redirect("/login")
         conn = db()
-        user = conn.execute("SELECT is_admin FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        user = conn.execute("SELECT is_admin FROM users WHERE id=?", (session.get("user_id"),)).fetchone()
         conn.close()
         if not user or user["is_admin"] != 1:
             return "⛔ Access Denied: Admin Only", 403
@@ -161,40 +165,25 @@ def send_email_notification(to_email, subject, body_content):
         print(f"[EMAIL ERROR] {e}")
         return False
 
+def get_live_weather():
+    try:
+        url = "https://api.open-meteo.com/v1/forecast?latitude=36.91&longitude=3.91&current_weather=true"
+        response = requests.get(url, timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            temp = data["current_weather"]["temperature"]
+            wind = data["current_weather"]["windspeed"]
+            return {"temp": temp, "wind": wind, "hint": "☀️ طقس اليوم ممتاز للإنتاجية!", "success": True}
+    except Exception:
+        pass
+    return {"success": False}
+
 # ================= ROUTES =================
 @app.route("/")
 def index():
-    if "user_id" in session:
+    if "username" in session:
         return redirect("/dashboard")
     return redirect("/login")
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if 'username' in session:
-        return redirect(url_for('dashboard'))
-        
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        raw_password = request.form.get('password', '')
-        
-        if not username or not raw_password:
-            return render_template('login.html', error="❌ برجاء إدخال اسم المستخدم وكلمة المرور")
-            
-        # تشفير كلمة المرور للمقارنة
-        password = hash_pw(raw_password)
-        
-        conn = db() # استخدام دالة الاتصال الموحدة الخاصة بك
-        user = conn.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).fetchone()
-        conn.close()
-        
-        if user:
-            session['username'] = username
-            session['user_id'] = user['id'] # حفظ الـ id أيضاً لضمان عمل بقية الميزات (مثل الـ Profile والـ Logs)
-            log_activity(user['id'], "login")
-            return redirect(url_for('dashboard'))
-        else:
-            return render_template('login.html', error="❌ خطأ في الاسم أو كلمة المرور")
-            
-    return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -205,24 +194,21 @@ def register():
         username = request.form.get('username', '').strip()
         raw_password = request.form.get('password', '')
         
-        # التحقق من الحقول قبل التشفير لمنع الـ Internal Server Error
         if not username or not raw_password:
             return render_template('register.html', error="الرجاء ملء جميع الحقول!")
             
         password = hash_pw(raw_password)
         filename = "default.png"
-        generated_key = secrets.token_hex(20) # توليد مفتاح الـ API الافتراضي للمستخدم الجديد
+        generated_key = secrets.token_hex(20)
         
         conn = db()
         try:
-            # إدخال الحساب بكافة الأعمدة لتفادي أخطاء القيم الفارغة في لوحة التحكم
             conn.execute("""
                 INSERT INTO users(username, password, avatar, plan, is_admin, api_key, api_requests_count, max_api_limits)
                 VALUES (?, ?, ?, 'BASIC', 0, ?, 0, 50)
             """, (username, password, filename, generated_key))
             conn.commit()
             
-            # جلب الـ ID الخاص بالمستخدم الجديد لتسجيل دخوله بشكل صحيح
             user_row = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
             
             session['username'] = username
@@ -239,6 +225,34 @@ def register():
             
     return render_template('register.html')
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'username' in session:
+        return redirect(url_for('dashboard'))
+        
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        raw_password = request.form.get('password', '')
+        
+        if not username or not raw_password:
+            return render_template('login.html', error="❌ برجاء إدخال اسم المستخدم وكلمة المرور")
+            
+        password = hash_pw(raw_password)
+        
+        conn = db()
+        user = conn.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).fetchone()
+        conn.close()
+        
+        if user:
+            session['username'] = username
+            session['user_id'] = user['id']
+            log_activity(user['id'], "login")
+            return redirect(url_for('dashboard'))
+        else:
+            return render_template('login.html', error="❌ خطأ في الاسم أو كلمة المرور")
+            
+    return render_template('login.html')
+
 @app.route("/logout")
 def logout():
     if "user_id" in session:
@@ -246,29 +260,14 @@ def logout():
     session.clear()
     return redirect("/login")
 
-def get_live_weather():
-    try:
-        url = "https://api.open-meteo.com/v1/forecast?latitude=36.91&longitude=3.91&current_weather=true"
-        response = requests.get(url, timeout=3)
-        if response.status_code == 200:
-            data = response.json()
-            temp = data["current_weather"]["temperature"]
-            wind = data["current_weather"]["windspeed"]
-            return {"temp": temp, "wind": wind, "hint": "☀️ طقس اليوم ممتاز للإنتاجية!", "success": True}
-    except Exception:
-        pass
-    return {"success": False}
-
 @app.route('/dashboard', methods=["GET", "POST"])
 def dashboard():
-    # التحقق من وجود اسم المستخدم في الجلسة
     if 'username' not in session:
         return redirect(url_for('login'))
         
     username = session['username']
     conn = db()
     
-    # 1. جلب بيانات المستخدم لمعرفة الـ id والـ plan الخاصين به
     user_row = conn.execute('SELECT id, plan FROM users WHERE username = ?', (username,)).fetchone()
     
     if not user_row:
@@ -279,7 +278,6 @@ def dashboard():
     user_id = user_row['id']
     plan = user_row['plan']
 
-    # 2. التعامل مع إضافة المهام الجديدة (إذا أرسل المستخدم مهمة جديدة)
     if request.method == "POST":
         task_text = request.form.get("task", "").strip()
         if task_text:
@@ -288,16 +286,21 @@ def dashboard():
             log_activity(user_id, "add_task")
             return redirect(url_for('dashboard'))
             
-    # 3. جلب المهام الخاصة بالمستخدم لعرضها في القائمة
     tasks = conn.execute("SELECT * FROM tasks WHERE user_id=?", (user_id,)).fetchall()
-    
-    # 4. جلب بيانات الطقس الحية
     weather = get_live_weather()
-    
     conn.close()
     
-    # عرض الصفحة وإرسال البيانات المتوافقة مع لوحة التحكم بالكامل
     return render_template('dashboard.html', username=username, plan=plan, tasks=tasks, weather=weather)
+
+@app.route("/delete/<int:id>")
+@login_required
+def delete(id):
+    conn = db()
+    conn.execute("DELETE FROM tasks WHERE id=? AND user_id=?", (id, session["user_id"]))
+    conn.commit()
+    conn.close()
+    log_activity(session["user_id"], "delete_task")
+    return redirect("/dashboard")
 
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
