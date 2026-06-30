@@ -168,42 +168,73 @@ def index():
         return redirect("/dashboard")
     return redirect("/login")
 
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        u = request.form["username"].strip()
-        p = hash_pw(request.form["password"])
-        filename = "default.png"
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'username' in session:
+        return redirect(url_for('dashboard'))
         
-        conn = db()
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        import sqlite3
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        
+        # البحث عن المستخدم
+        cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user:
+            session['username'] = username
+            return redirect(url_for('dashboard'))
+        else:
+            return render_template('login.html', error="❌ خطأ في الاسم أو كلمة المرور")
+            
+    return render_template('login.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if 'username' in session:
+        return redirect(url_for('dashboard'))
+        
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if not username or not password:
+            return render_template('register.html', error="الرجاء ملء جميع الحقول!")
+            
+        import sqlite3
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        
         try:
-            generated_key = secrets.token_hex(20)
-            conn.execute("""
-                INSERT INTO users(username, password, avatar, plan, is_admin, api_key, api_requests_count, max_api_limits)
-                VALUES (?, ?, ?, 'free', 0, ?, 0, 50)
-            """, (u, p, filename, generated_key))
+            # إدخال الحساب الجديد مباشرة بخطة BASIC الافتراضية
+            cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
             conn.commit()
+            
+            # تسجيل الدخول تلقائياً فور نجاح التسجيل
+            session['username'] = username
             conn.close()
-            return redirect("/login")
+            return redirect(url_for('dashboard'))
+            
         except sqlite3.IntegrityError:
             conn.close()
-            return render_template("register.html", error="اسم المستخدم مسجل مسبقاً!")
-    return render_template("register.html")
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        u = request.form["username"]
-        p = hash_pw(request.form["password"])
-        conn = db()
-        user = conn.execute("SELECT * FROM users WHERE username=? AND password=?", (u, p)).fetchone()
-        conn.close()
-        if user:
-            session["user_id"] = user["id"]
-            log_activity(user["id"], "login")
-            return redirect("/dashboard")
-        return render_template("login.html", error="❌ خطأ في الاسم أو كلمة المرور")
-    return render_template("login.html")
+            return render_template('register.html', error="اسم المستخدم هذا مسجل بالفعل!")
+        except sqlite3.OperationalError:
+            # صيانة تلقائية في حال عدم وجود عمود plan في السيرفر الجديد
+            cursor.execute('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "BASIC"')
+            conn.commit()
+            cursor.execute('INSERT INTO users (username, password, plan) VALUES (?, ?, ?)', (username, password, 'BASIC'))
+            conn.commit()
+            session['username'] = username
+            conn.close()
+            return redirect(url_for('dashboard'))
+            
+    return render_template('register.html')
 
 @app.route("/logout")
 def logout():
@@ -227,15 +258,27 @@ def get_live_weather():
 
 @app.route('/dashboard', methods=["GET", "POST"])
 def dashboard():
-    # التحقق من أن المستخدم قام بتسجيل الدخول عبر الـ user_id
-    if 'user_id' not in session:
+    # التحقق من وجود اسم المستخدم في الجلسة بناءً على دالة الـ login الجديدة
+    if 'username' not in session:
         return redirect(url_for('login'))
         
-    user_id = session['user_id']
+    username = session['username']
     
+    # الاتصال بقاعدة البيانات
     conn = db()
     
-    # التعامل مع إضافة المهام الجديدة (إذا كان هناك طلب POST)
+    # 1. جلب بيانات المستخدم لمعرفة الـ id والـ plan الخاصين به
+    user_row = conn.execute('SELECT id, plan FROM users WHERE username = ?', (username,)).fetchone()
+    
+    if not user_row:
+        conn.close()
+        session.clear()
+        return redirect(url_for('login'))
+        
+    user_id = user_row['id']
+    plan = user_row['plan']
+
+    # 2. التعامل مع إضافة المهام الجديدة (إذا قام المستخدم بكتابة مهمة وضغط إرسال)
     if request.method == "POST":
         task_text = request.form.get("task", "").strip()
         if task_text:
@@ -243,38 +286,17 @@ def dashboard():
             conn.commit()
             log_activity(user_id, "add_task")
             return redirect(url_for('dashboard'))
-
-    # جلب بيانات المستخدم بالاعتماد على الـ id
-    user_row = conn.execute('SELECT username, plan FROM users WHERE id = ?', (user_id,)).fetchone()
-    
-    if not user_row:
-        conn.close()
-        session.clear()
-        return redirect(url_for('login'))
-        
-    username = user_row['username']
-    plan = user_row['plan']
-    
-    # جلب المهام الخاصة بالمستخدم لعرضها في لوحة التحكم
+            
+    # 3. جلب المهام الخاصة بالمستخدم لعرضها في الجدول/القائمة
     tasks = conn.execute("SELECT * FROM tasks WHERE user_id=?", (user_id,)).fetchall()
     
-    # جلب بيانات الطقس الحية
+    # 4. جلب بيانات الطقس الحية لـ SaaS Ultra
     weather = get_live_weather()
     
     conn.close()
     
-    # عرض الصفحة وإرسال المتغيرات لقالب الـ HTML
+    # عرض الصفحة وإرسال البيانات المتوافقة مع لوحة التحكم بالكامل
     return render_template('dashboard.html', username=username, plan=plan, tasks=tasks, weather=weather)
-
-@app.route("/delete/<int:id>")
-@login_required
-def delete(id):
-    conn = db()
-    conn.execute("DELETE FROM tasks WHERE id=? AND user_id=?", (id, session["user_id"]))
-    conn.commit()
-    conn.close()
-    log_activity(session["user_id"], "delete_task")
-    return redirect("/dashboard")
 
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
