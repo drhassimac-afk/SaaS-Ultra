@@ -165,7 +165,7 @@ def send_email_notification(to_email, subject, body_content):
         print(f"[EMAIL ERROR] {e}")
         return False
 
- def get_live_weather():
+def get_live_weather():
     # قيم افتراضية دائماً لضمان عدم انهيار الـ HTML إذا فشل الإنترنت بالسيرفر
     default_weather = {"temp": "24", "wind": "12", "hint": "☀️ طقس اليوم ممتاز للإنتاجية!", "success": True}
     try:
