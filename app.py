@@ -311,6 +311,25 @@ def dashboard():
                            weather=weather, 
                            user={"username": username, "plan": plan, "api_key": api_key})
 
+@app.route('/add', methods=["POST"])
+def add_task():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    # استقبال الحقل الذي يحمل اسم 'title' من الـ HTML
+    task_text = request.form.get("title", "").strip()
+    user_id = session['user_id']
+    
+    if task_text:
+        conn = db()
+        # إدخال المهمة في قاعدة البيانات
+        conn.execute("INSERT INTO tasks (user_id, task) VALUES (?, ?)", (user_id, task_text))
+        conn.commit()
+        conn.close()
+        log_activity(user_id, "add_task")
+        
+    return redirect(url_for('dashboard'))
+    
 @app.route("/delete/<int:id>")
 @login_required
 def delete(id):
