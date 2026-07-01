@@ -263,7 +263,7 @@ def logout():
 
 @app.route('/dashboard', methods=["GET", "POST"])
 def dashboard():
-    # 1. التحقق من تسجيل الدخول
+    # 1. التحقق الآمن من الجلسة
     if 'username' not in session or 'user_id' not in session:
         session.clear()
         return redirect(url_for('login'))
@@ -273,7 +273,7 @@ def dashboard():
     
     conn = db()
     
-    # 2. جلب بيانات المستخدم الحالية (الخطة ومفتاح الـ API)
+    # 2. جلب بيانات الخطة والتأكد من وجود المستخدم
     user_row = conn.execute('SELECT plan, api_key FROM users WHERE id = ?', (user_id,)).fetchone()
     
     if not user_row:
@@ -284,33 +284,26 @@ def dashboard():
     plan = user_row['plan']
     api_key = user_row['api_key']
     
-    # تأمين تلقائي: إذا كان الحساب PRO أو ترقى ولم يُنشأ له مفتاح API بعد، نقوم بتوليده فوراً
-    if not api_key:
+    # توليد مفتاح الـ API تلقائياً للمشتركين بـ PRO إذا لم يكن موجوداً
+    if plan == 'pro' and not api_key:
         api_key = secrets.token_hex(20)
         conn.execute("UPDATE users SET api_key = ? WHERE id = ?", (api_key, user_id))
         conn.commit()
 
-    # 3. استقبال ومعالجة "إضافة مهمة جديدة" عند الضغط على زر (إضافة ➕)
-    if request.method == "POST":
-        task_text = request.form.get("task", "").strip() # 'task' هو اسم الحقل (name) في الـ HTML
-        if task_text:
-            # إدخال المهمة في قاعدة البيانات وربطها بالمستخدم الحالي
-            conn.execute("INSERT INTO tasks (user_id, task) VALUES (?, ?)", (user_id, task_text))
-            conn.commit()
-            log_activity(user_id, "add_task")
-            # إعادة التوجيه لإنعاش الصفحة وعرض المهمة فوراً
-            conn.close()
-            return redirect(url_for('dashboard'))
-            
-    # 4. جلب المصفوفة الكاملة للمهام الخاصة بهذا المستخدم لعرضها بالأسفل
-    tasks_rows = conn.execute("SELECT * FROM tasks WHERE user_id = ?", (user_id,)).fetchall()
-    tasks = [dict(row) for row in tasks_rows] if tasks_rows else []
+    # 3. جلب المهام وتحويل العمود 'task' إلى 'title' ليتوافق مع قالب الـ HTML الخاص بك دون الحاجة لتعديله
+    tasks_rows = conn.execute("SELECT id, user_id, task FROM tasks WHERE user_id=?", (user_id,)).fetchall()
+    tasks = []
+    for row in tasks_rows:
+        tasks.append({
+            "id": row["id"],
+            "user_id": row["user_id"],
+            "title": row["task"]  # هنا قمنا بتحويل اسم المفتاح ليتطابق مع {{ task.title }} في الـ HTML
+        })
     
-    # 5. جلب بيانات الطقس
+    # 4. جلب الطقس الآمن
     weather = get_live_weather()
     conn.close()
     
-    # 6. إرسال كل البيانات المتوقعة إلى قالب الـ HTML لتعرض بنجاح
     return render_template('dashboard.html', 
                            username=username, 
                            plan=plan, 
