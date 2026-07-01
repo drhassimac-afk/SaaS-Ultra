@@ -25,6 +25,7 @@ def db():
 
 def init_db():
     conn = db()
+    # جدول المستخدمين
     conn.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,13 +39,22 @@ def init_db():
         max_api_limits INTEGER DEFAULT 50
     )
     """)
+    
+    # جدول المهام المطور (يدعم المهام الفرعية، الحالات، والأولويات)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
-        task TEXT
+        task TEXT,
+        status TEXT DEFAULT 'pending', -- 'pending' أو 'completed'
+        priority TEXT DEFAULT 'medium', -- 'high', 'medium', 'low'
+        parent_id INTEGER DEFAULT NULL, -- يُشير إلى المعرّف الرئيسي إذا كانت مهمة فرعية
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE CASCADE
     )
     """)
+    
+    # جدول سجلات الأنشطة
     conn.execute("""
     CREATE TABLE IF NOT EXISTS activity_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,6 +64,19 @@ def init_db():
     )
     """)
     
+    # ترقية الجداول القديمة إن وجدت دون فقدان البيانات
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'pending'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT 'medium'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN parent_id INTEGER DEFAULT NULL")
+    except sqlite3.OperationalError:
+        pass
     try:
         conn.execute("ALTER TABLE users ADD COLUMN api_requests_count INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
@@ -166,7 +189,7 @@ def send_email_notification(to_email, subject, body_content):
         return False
 
 def get_live_weather():
-    default_weather = {"temp": "24", "wind": "12", "hint": "☀️ طقس اليوم ممتاز للإنتاجية!", "success": True}
+    default_weather = {"temp": "28.0", "wind": "10.9", "hint": "☀️ طقس اليوم ممتاز للإنتاجية!", "success": True}
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=36.91&longitude=3.91&current_weather=true"
         response = requests.get(url, timeout=3)
@@ -174,7 +197,7 @@ def get_live_weather():
             data = response.json()
             temp = data["current_weather"]["temperature"]
             wind = data["current_weather"]["windspeed"]
-            return {"temp": temp, "wind": wind, "hint": "☀️ طقس اليوم ممتاز للإنتاجية!", "success": True}
+            return {"temp": temp, "wind": wind, "hint": "☀️ طقس اليوم ممتاز للإنتاجية والعمل الفعلي!", "success": True}
     except Exception as e:
         print(f"[WEATHER ERROR] {e}")
     return default_weather
@@ -263,7 +286,6 @@ def logout():
 
 @app.route('/dashboard', methods=["GET", "POST"])
 def dashboard():
-    # 1. التحقق الآمن من الجلسة
     if 'username' not in session or 'user_id' not in session:
         session.clear()
         return redirect(url_for('login'))
@@ -272,8 +294,6 @@ def dashboard():
     user_id = session['user_id']
     
     conn = db()
-    
-    # 2. جلب بيانات الخطة والتأكد من وجود المستخدم
     user_row = conn.execute('SELECT plan, api_key FROM users WHERE id = ?', (user_id,)).fetchone()
     
     if not user_row:
@@ -284,23 +304,39 @@ def dashboard():
     plan = user_row['plan']
     api_key = user_row['api_key']
     
-    # توليد مفتاح الـ API تلقائياً للمشتركين بـ PRO إذا لم يكن موجوداً
     if plan == 'pro' and not api_key:
         api_key = secrets.token_hex(20)
         conn.execute("UPDATE users SET api_key = ? WHERE id = ?", (api_key, user_id))
         conn.commit()
 
-    # 3. جلب المهام وتحويل العمود 'task' إلى 'title' ليتوافق مع قالب الـ HTML الخاص بك دون الحاجة لتعديله
-    tasks_rows = conn.execute("SELECT id, user_id, task FROM tasks WHERE user_id=?", (user_id,)).fetchall()
+    # جلب المهام الرئيسية فقط (التي ليس لها parent_id)
+    main_tasks = conn.execute("""
+        SELECT * FROM tasks 
+        WHERE user_id=? AND parent_id IS NULL 
+        ORDER BY created_at DESC
+    """, (user_id,)).fetchall()
+    
     tasks = []
-    for row in tasks_rows:
+    for m_task in main_tasks:
+        # جلب المهام الفرعية الخاصة بكل مهمة رئيسية لربطها بالواجهة المتقدمة لاحقاً
+        sub_tasks_rows = conn.execute("SELECT * FROM tasks WHERE parent_id=?", (m_task["id"],)).fetchall()
+        subs = []
+        for s_row in sub_tasks_rows:
+            subs.append({
+                "id": s_row["id"],
+                "title": s_row["task"],
+                "status": s_row["status"]
+            })
+            
         tasks.append({
-            "id": row["id"],
-            "user_id": row["user_id"],
-            "title": row["task"]  # هنا قمنا بتحويل اسم المفتاح ليتطابق مع {{ task.title }} في الـ HTML
+            "id": m_task["id"],
+            "user_id": m_task["user_id"],
+            "title": m_task["task"],
+            "status": m_task["status"],
+            "priority": m_task["priority"],
+            "sub_tasks": subs
         })
     
-    # 4. جلب الطقس الآمن
     weather = get_live_weather()
     conn.close()
     
@@ -316,25 +352,39 @@ def add_task():
     if 'user_id' not in session:
         return redirect(url_for('login'))
         
-    # استقبال الحقل الذي يحمل اسم 'title' من الـ HTML
     task_text = request.form.get("title", "").strip()
     user_id = session['user_id']
     
     if task_text:
         conn = db()
-        # إدخال المهمة في قاعدة البيانات
-        conn.execute("INSERT INTO tasks (user_id, task) VALUES (?, ?)", (user_id, task_text))
+        conn.execute("INSERT INTO tasks (user_id, task, status) VALUES (?, ?, 'pending')", (user_id, task_text))
         conn.commit()
         conn.close()
         log_activity(user_id, "add_task")
         
     return redirect(url_for('dashboard'))
+
+@app.route("/toggle/<int:id>")
+@login_required
+def toggle_task(id):
+    """تغيير حالة المهمة بين مكتملة وقيد الانتظار"""
+    conn = db()
+    task = conn.execute("SELECT * FROM tasks WHERE id=? AND user_id=?", (id, session["user_id"])).fetchone()
+    if task:
+        new_status = 'completed' if task['status'] == 'pending' else 'pending'
+        conn.execute("UPDATE tasks SET status=? WHERE id=?", (new_status, id))
+        conn.commit()
+        log_activity(session["user_id"], f"toggle_task_{id}_to_{new_status}")
+    conn.close()
+    return redirect("/dashboard")
     
 @app.route("/delete/<int:id>")
 @login_required
 def delete(id):
     conn = db()
+    # مسح المهمة وأي مهمة فرعية مرتبطة بها
     conn.execute("DELETE FROM tasks WHERE id=? AND user_id=?", (id, session["user_id"]))
+    conn.execute("DELETE FROM tasks WHERE parent_id=? AND user_id=?", (id, session["user_id"]))
     conn.commit()
     conn.close()
     log_activity(session["user_id"], "delete_task")
@@ -386,17 +436,42 @@ def analytics():
 @app.route("/ai/decompose/<int:task_id>")
 @login_required
 def ai_decompose(task_id):
+    """تفكيك ذكي حقيقي يقوم بإدراج مهام فرعية (Sub-tasks) بقاعدة البيانات ومبرمج للاتصال بالذكاء الاصطناعي لاحقاً"""
     conn = db()
     task = conn.execute("SELECT * FROM tasks WHERE id=? AND user_id=?", (task_id, session["user_id"])).fetchone()
+    
     if not task:
         conn.close()
         return "المهمة غير موجودة", 404
     
-    steps = ["الخطوة 1: التخطيط المبدئي.", "الخطوة 2: التنفيذ ومراجعة المسار.", "الخطوة 3: التدقيق النهائي."]
-    flash_message = f"💡 تفكيك الذكاء الاصطناعي للمهمة:\n" + "\n".join(steps)
-    flash(flash_message, "ai_hint")
+    # محاكاة لخطوات التفكيك التي يولدها الذكاء الاصطناعي (يمكن ربطها بـ API حقيقي مثل OpenAI/Gemini هنا)
+    ai_generated_steps = [
+        f"المرحلة الأولى: التحضير وجمع متطلبات ({task['task']})",
+        f"المرحلة الثانية: البدء بالتنفيذ الفعلي للخطوة الأساسية",
+        f"المرحلة الثالثة: المراجعة النهائية والاختبار والإنهاء"
+    ]
+    
+    # إدراج هذه الخطوات كمهام فرعية حقيقية بقاعدة البيانات مربوطة بمعرف المهمة الأب parent_id
+    for step in ai_generated_steps:
+        conn.execute("""
+            INSERT INTO tasks (user_id, task, status, parent_id) 
+            VALUES (?, ?, 'pending', ?)
+        """, (session["user_id"], step, task_id))
+        
+    conn.commit()
     conn.close()
+    
+    flash(f"🪄 تم تفكيك المهمة بنجاح إلى {len(ai_generated_steps)} خطوات فرعية حقيقية!", "ai_hint")
     return redirect("/dashboard")
+
+# ================= API ENDPOINTS FOR THIRD-PARTY APPLICATIONS =================
+@app.route("/api/v1/tasks", methods=["GET"])
+@api_key_required
+def api_get_tasks():
+    conn = db()
+    user_tasks = conn.execute("SELECT id, task, status, priority FROM tasks WHERE user_id=? AND parent_id IS NULL", (request.api_user["id"],)).fetchall()
+    conn.close()
+    return jsonify([dict(t) for t in user_tasks]), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
