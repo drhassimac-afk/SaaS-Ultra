@@ -9,6 +9,7 @@
 <body class="bg-gray-900 text-gray-100 font-sans p-6">
 
     <div class="max-w-4xl mx-auto">
+        <!-- الهيدر وشريط التنقل -->
         <header class="mb-8 flex justify-between items-center border-b border-gray-800 pb-4">
             <div>
                 <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">
@@ -16,14 +17,15 @@
                 </h1>
                 <p class="text-sm text-gray-400 mt-1">مرحباً بك مجدداً، {{ username }} 👋</p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 items-center">
                 <a href="/analytics" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg border border-gray-700 transition-all">
                     📊 الإحصائيات والـ API
                 </a>
                 <a href="/profile" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg border border-gray-700 transition-all">
                     👤 الملف الشخصي
                 </a>
-                <a href="/upgrade" class="...">ترقية ⚡
+                <a href="/upgrade" class="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-gray-900 font-bold text-sm px-4 py-2 rounded-lg shadow-lg shadow-amber-500/10 transition-all">
+                    ترقية ⚡
                 </a>
                 <a href="/logout" class="bg-rose-950/40 hover:bg-rose-900 text-rose-300 text-sm px-4 py-2 rounded-lg border border-rose-800/50 transition-all">
                     تسجيل الخروج 🚪
@@ -31,6 +33,7 @@
             </div>
         </header>
 
+        <!-- معلومات الخطة والـ API -->
         <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
                 <span class="text-xs text-gray-400 block mb-1">نوعية الحساب الحالي</span>
@@ -51,6 +54,7 @@
             </div>
         </div>
 
+        <!-- مساعد الطقس والإنتاجية -->
         <div class="mb-6 bg-gray-800 p-4 rounded-xl border {% if user.plan == 'pro' %}border-amber-500/30{% else %}border-gray-700{% endif %}">
             <div class="flex justify-between items-center mb-2">
                 <h3 class="text-sm font-bold flex items-center gap-2">
@@ -90,6 +94,7 @@
             {% endif %}
         </div>
 
+        <!-- رسائل فلاش (الذكاء الاصطناعي) -->
         {% with messages = get_flashed_messages(category_filter=["ai_hint"]) %}
             {% if messages %}
                 {% for message in messages %}
@@ -100,6 +105,7 @@
             {% endif %}
         {% endwith %}
 
+        <!-- نموذج إضافة مهمة جديدة -->
         <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl mb-6">
             <h2 class="text-lg font-bold text-gray-200 mb-4">📝 إضافة مهمة جديدة للمصفوفة</h2>
             <form action="/add" method="POST" class="flex gap-2">
@@ -110,6 +116,7 @@
             </form>
         </div>
 
+        <!-- قائمة المهام الحالية -->
         <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
             <h2 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">📋 قائمة المهام الحالية:</h2>
             <ul class="space-y-3">
@@ -140,3 +147,4 @@
 
 </body>
 </html>
+
